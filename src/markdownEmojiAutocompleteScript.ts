@@ -13,6 +13,9 @@ export default (context: { contentScriptId: string, postMessage: any }) => {
             const triggerCharacter = await context.postMessage('getTriggerCharacter');
             console.info(`trigger character loaded: ${triggerCharacter}`);
 
+            const showNonExactMatches: boolean = await context.postMessage('getShowNonExactMatches') ?? true;
+            console.info(`show non exact matches: ${showNonExactMatches}`);
+
             const emojisCompletionList: Completion[] = Object.entries(emojiKeyToUnicodeMapping).map(([key, unicode]) => {
                 const codePoints = unicode.split('-').map(hex => parseInt(hex, 16));
                 const emoji = String.fromCodePoint(...codePoints);
@@ -28,18 +31,24 @@ export default (context: { contentScriptId: string, postMessage: any }) => {
                 const word = ctx.matchBefore(/\w+$/);
 
                 // We return null if no match found
-                if (word === null && !ctx.explicit) {
+                if (word === null) {
                     return null;
                 }
 
-                return {
-                    from: word.from,
-                    options: emojisCompletionList.map((completion): Completion => ({
+                // If showNonExactMatches:
+                // We return the boosted list (exact matches first then approximate matches)
+                // We return exact matches only
+                const candidates = showNonExactMatches
+                    ? emojisCompletionList.map((completion): Completion => ({
                         ...completion,
                         // We want exact matches to be displayed on top
                         boost: completion.label.includes(word.text) ? 1 : 0,
-                    })),
-                    validFor: /\w*$/,
+                    }))
+                    : emojisCompletionList.filter(c => c.label.includes(word.text));
+
+                return {
+                    from: word.from,
+                    options: candidates,
                 };
             };
 
